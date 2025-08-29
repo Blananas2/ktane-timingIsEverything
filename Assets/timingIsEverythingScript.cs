@@ -5,504 +5,245 @@ using UnityEngine;
 
 public class timingIsEverythingScript : MonoBehaviour
 {
+    public KMAudio Audio;
     public KMBombModule Module;
     public KMBombInfo Bomb;
 
-    public KMSelectable Button;
-    public GameObject[] Lights;
-    public Material GreenMat;
+    public KMSelectable ButtonSel;
+    public MeshRenderer ButtonMesh;
+    public MeshRenderer[] Lights;
+    public Material LightGreen;
     public TextMesh Text;
-    public Material[] buttonColors;
+    public Material[] ButtonColors;
 
-    private bool moduleReady;
-    private float startTime;
-    private float alfa;
-    private float bravo;
-    private float charlie;
-    private float timeA;
-    private float timeB;
-    private float timeC;
-    private string strA;
-    private string strB;
-    private string strC;
-    private int stages;
-    private bool active;
+    bool moduleReady;
+    float startTime;
+    float? displayedTime;
+    float[] chosenTimes = { -1f, -1f, -1f };
+    string[] timeStrings = { "---", "---", "---" };
+    int submittedStages = 0;
 
-    private bool TwitchPlaysSkipTimeAllowed = true;
-    private bool timeMode = false;
-    private bool zenMode = false;
-    private bool TimeModeActive;
-    private bool ZenModeActive;
+    bool TwitchPlaysSkipTimeAllowed = true;
+    bool TimeModeActive = false;
+    bool ZenModeActive = false;
+    bool calcHours = false; //set to true if Bomb Timer Modifier requires it
 
     //Logging
     static int moduleIdCounter = 1;
     int moduleId;
-    private bool moduleSolved;
-    private bool tpCorrect;
+    bool moduleSolved;
+    bool tpCorrect;
 
-    private void Awake()
+    void Awake()
     {
         moduleId = moduleIdCounter++;
 
         Module.OnActivate += ModuleStart;
-        Button.OnInteract += delegate
+        ButtonSel.OnInteract += delegate
         {
             PressButton();
             return false;
         };
     }
 
-    private void ModuleStart()
+    void ModuleStart()
     {
-        startTime = Mathf.Floor(Bomb.GetTime());
+        startTime = Mathf.FloorToInt(Bomb.GetTime());
 
-        if (startTime < 30)
-            startTime = 30;
+        //TODO: bomb timer modifier detector shiz
 
-        alfa = UnityEngine.Random.Range(11, startTime - 10);
-        bravo = UnityEngine.Random.Range(11, startTime - 10);
-        charlie = UnityEngine.Random.Range(11, startTime - 10);
-        alfa = Math.Abs(alfa - (alfa % 1));
-        bravo = Math.Abs(bravo - (bravo % 1));
-        charlie = Math.Abs(charlie - (charlie % 1));
-
-        //ABC, ACB, BAC, BCA, CAB, CBA
-        //ABC : A >= B, B >= C, A >= C
-        //lowest: +1, highest: - 1
-
-        Debug.Log("BEFORE: " + alfa + " " + bravo + " " + charlie);
-
-        if (alfa >= bravo && bravo >= charlie && alfa >= charlie)
+        if (ZenModeActive)
         {
-            timeA = alfa;
-            timeB = bravo;
-            timeC = charlie;
-        }
-        else if (alfa >= charlie && charlie >= bravo && alfa >= bravo)
-        {
-            timeA = alfa;
-            timeB = charlie;
-            timeC = bravo;
-        }
-        else if (bravo >= alfa && alfa >= charlie && bravo >= charlie)
-        {
-            timeA = bravo;
-            timeB = alfa;
-            timeC = charlie;
-        }
-        else if (bravo >= charlie && charlie >= alfa && bravo >= alfa)
-        {
-            timeA = bravo;
-            timeB = charlie;
-            timeC = alfa;
-        }
-        else if (charlie >= alfa && alfa >= bravo && charlie >= bravo)
-        {
-            timeA = charlie;
-            timeB = alfa;
-            timeC = bravo;
-        }
-        else if (charlie >= bravo && bravo >= alfa && charlie >= alfa)
-        {
-            timeA = charlie;
-            timeB = bravo;
-            timeC = alfa;
-        }
-        else
-        {
-            Debug.Log("f.");
-        }
-
-        timeA += 5;
-        timeC -= 5;
-
-        Debug.Log("AFTER: " + timeA + " " + timeB + " " + timeC);
-
-        GenerateStrings(timeA, strA, 1);
-        GenerateStrings(timeB, strB, 2);
-        GenerateStrings(timeC, strC, 3);
-
-        Text.text = strA;
-
-        if (TimeModeActive)
-        {
-            timeMode = true;
-            Debug.LogFormat("[Timing is Everything #{0}] Current Mode: Time", moduleId);
-            Debug.LogFormat(
-                "[Timing is Everything #{0}] Time Mode is active! This means that new times will NOT be generated and no strikes will occur unless pressed at an incorrect time!",
-                moduleId);
-            Button.GetComponent<MeshRenderer>().material = buttonColors[1];
-        }
-        else if (ZenModeActive)
-        {
-            zenMode = true;
             Debug.LogFormat("[Timing is Everything #{0}] Current Mode: Zen", moduleId);
-            Debug.LogFormat(
-                "[Timing is Everything #{0}] Zen Mode is active! This means that times go up instead of down!",
-                moduleId);
-            Button.GetComponent<MeshRenderer>().material = buttonColors[2];
-            timeA *= 2;
-            //timeB += 30;
-            //timeC += 30;
-            GenerateStrings(timeA, strA, 1);
-            //GenerateStrings(timeB, strB, 2);
-            //GenerateStrings(timeC, strC, 3);
-            Text.text = strC;
+            ButtonMesh.material = ButtonColors[2];
+            GenerateTimes(3, 120f * Bomb.GetSolvableModuleNames().Count);
+        }
+        else if (TimeModeActive)
+        {
+            Debug.LogFormat("[Timing is Everything #{0}] Current Mode: Time", moduleId);
+            ButtonMesh.material = ButtonColors[1];
+            GenerateTimes(3, startTime);
         }
         else
         {
             Debug.LogFormat("[Timing is Everything #{0}] Current Mode: Normal", moduleId);
+            GenerateTimes(3, startTime);
         }
-
-        Debug.LogFormat("[Timing is Everything #{0}] The times are: {1}, {2}, and {3}.", moduleId, strA, strB, strC);
-        moduleReady = true;
     }
 
-    private void GenerateStrings(float t, string s, int n)
+    void GenerateTimes(int number, float maxTime)
     {
-        charlie = t % 60;
-        bravo = ((t - charlie) % 3600) / 60;
-        alfa = (t - (bravo * 60 + charlie)) / 3600;
+        //times
+        for (int t = 0; t < 3; t++)
+        {
+            if (3 - number > t)
+            {
+                chosenTimes[t] = Single.MaxValue; //so that when they're sorted, it's moved to a position of a time already dealt with
+            }
+            else
+            {
+                if (maxTime <= 60f && !ZenModeActive)
+                {
+                    chosenTimes[t] = Mathf.FloorToInt(UnityEngine.Random.Range(0f, maxTime));
+                }
+                else
+                {
+                    chosenTimes[t] = Mathf.FloorToInt(UnityEngine.Random.Range(20f, maxTime - 20f));
+                }
+            }
+        }
 
-        if (bravo > 9 && charlie > 9)
+        Array.Sort(chosenTimes);
+        if (!ZenModeActive) { Array.Reverse(chosenTimes); }
+
+        if (ZenModeActive)
         {
-            s = alfa + ":" + bravo + ":" + charlie;
-        }
-        else if (bravo < 10 && charlie > 9)
-        {
-            s = alfa + ":0" + bravo + ":" + charlie;
-        }
-        else if (bravo > 9 && charlie < 10)
-        {
-            s = alfa + ":" + bravo + ":0" + charlie;
+            chosenTimes[1] *= 2;
+            chosenTimes[2] *= 3;
         }
         else
         {
-            s = alfa + ":0" + bravo + ":0" + charlie;
+            if (chosenTimes[0] + 3 < maxTime) { chosenTimes[0] += 3; } //these two adjustments ensure you don't have two times too close together.
+            if (chosenTimes[2] - 3 > 0) { chosenTimes[2] -= 3; }
         }
 
-        switch (n)
+        //strings
+        for (int t = 0; t < 3; t++)
         {
-            case 1:
-                strA = s;
-                break;
-            case 2:
-                strB = s;
-                break;
-            case 3:
-                strC = s;
-                break;
+            if (3 - number > t)
+            {
+                timeStrings[t] = "---";
+            }
+            else
+            {
+                if (chosenTimes[t] >= 3600 && calcHours)
+                {
+                    timeStrings[t] = Mathf.FloorToInt(chosenTimes[t] / 3600) + ":"
+                                    + Mathf.FloorToInt(chosenTimes[t] % 3600 / 60).ToString("00") + ":"
+                                    + Mathf.FloorToInt(chosenTimes[t] % 60).ToString("00");
+                }
+                else
+                {
+                    timeStrings[t] = Mathf.FloorToInt(chosenTimes[t] / 60).ToString("00")
+                                    + ":" + Mathf.FloorToInt(chosenTimes[t] % 60).ToString("00");
+                }
+            }
         }
+
+        Debug.LogFormat("[Timing is Everything #{0}] Generated times: {1}", moduleId, timeStrings.Join(", "));
+        SetTime();
+        moduleReady = true;
+    }
+
+    void SetTime()
+    {
+        displayedTime = chosenTimes[submittedStages];
+        Text.text = timeStrings[submittedStages];
     }
 
     // Update is called once per frame
     private void Update()
     {
-        if (moduleReady && !moduleSolved)
+        if (!moduleReady || moduleSolved || TimeModeActive) { return; }
+        if (Mathf.FloorToInt(Bomb.GetTime()) == startTime) { return; }
+        //^that fixes a bug where in zen mode, the game will still use the original 'set' time, and since that's greater than the displayed time, a strike would happen at the start of the bomb
+
+        if (ZenModeActive)
         {
-            if (!timeMode && !zenMode)
+            if (Mathf.FloorToInt(Bomb.GetTime()) > displayedTime)
             {
-                switch (stages)
-                {
-                    case 0:
-                        if (Mathf.Floor(Bomb.GetTime()) < timeA)
-                        {
-                            GetComponent<KMBombModule>().HandleStrike();
-                            Debug.LogFormat("[Timing is Everything #{0}] Missed Stage 1 time. Strike! New time: {1}",
-                                moduleId, strA);
-                            timeA = (((timeA + timeB) / 2) - ((timeA + timeB) / 2) % 1) - 1;
-                            GenerateStrings(timeA, strA, 1);
-                            Text.text = strA;
-                        }
-
-                        break;
-                    case 1:
-                        if (Mathf.Floor(Bomb.GetTime()) < timeB)
-                        {
-                            GetComponent<KMBombModule>().HandleStrike();
-                            Debug.LogFormat("[Timing is Everything #{0}] Missed Stage 2 time. Strike! New time: {1}",
-                                moduleId, strB);
-
-                            timeB = (((timeB + timeC) / 2) - ((timeB + timeC) / 2) % 1) - 1;
-                            GenerateStrings(timeB, strB, 2);
-                            Text.text = strB;
-                        }
-
-                        break;
-                    case 2:
-                        if (Mathf.Floor(Bomb.GetTime()) < timeC)
-                        {
-                            GetComponent<KMBombModule>().HandleStrike();
-                            Debug.LogFormat("[Timing is Everything #{0}] Missed Stage 3 time. Strike! New time: {1}",
-                                moduleId, strC);
-                            timeC = ((timeC / 2) - (timeC / 2) % 1) - 1;
-                            GenerateStrings(timeC, strC, 3);
-                            Text.text = strC;
-                        }
-
-                        break;
-                }
-
-                if (startTime - Mathf.Floor(Bomb.GetTime()) > 1)
-                {
-                    active = true;
-                }
-
-                if (timeA == timeB && active && stages == 0)
-                {
-                    stages = 1;
-                    Text.text = strB;
-                    Lights[0].GetComponent<MeshRenderer>().material = GreenMat;
-                    Debug.LogFormat(
-                        "[Timing is Everything #{0}] Stage 1 automatically complete due to time becoming the same as Stage 2. {1} {2} {3}",
-                        moduleId, strA, strB, strC);
-                }
-
-                if (timeB == timeC && active && stages == 1)
-                {
-                    stages = 2;
-                    Text.text = strC;
-                    Lights[1].GetComponent<MeshRenderer>().material = GreenMat;
-                    Debug.LogFormat(
-                        "[Timing is Everything #{0}] Stage 2 automatically complete due to time becoming the same as Stage 3.",
-                        moduleId);
-                }
-
-                if (timeC < 5 && active && stages == 2)
-                {
-                    GetComponent<KMBombModule>().HandlePass();
-                    moduleSolved = true;
-                    stages = 3;
-                    Text.text = "!!!";
-                    Lights[2].GetComponent<MeshRenderer>().material = GreenMat;
-                    Debug.LogFormat(
-                        "[Timing is Everything #{0}] Stage 3 automatically complete due to time becoming under 5 seconds. Module Solved.",
-                        moduleId);
-                }
-            }
-            else if (zenMode)
-            {
-                if (stages == 0)
-                {
-                    if (Mathf.Floor(Bomb.GetTime()) > timeC)
-                    {
-                        GetComponent<KMBombModule>().HandleStrike();
-                        timeC = timeC + (timeC / 2 - (timeC / 2) % 1);
-                        timeB = timeB + timeC;
-                        timeA = timeA + timeC;
-                        GenerateStrings(timeC, strC, 3);
-                        GenerateStrings(timeB, strB, 2);
-                        GenerateStrings(timeA, strA, 1);
-                        Text.text = strC;
-                        Debug.LogFormat("[Timing is Everything #{0}] Missed Stage 1 time. Strike! New time: {1}",
-                            moduleId, strC);
-                        Debug.Log("OKAY: " + timeA + " " + timeB + " " + timeC);
-                    }
-                }
-                else if (stages == 1)
-                {
-                    if (Mathf.Floor(Bomb.GetTime()) > timeB)
-                    {
-                        GetComponent<KMBombModule>().HandleStrike();
-                        timeB = timeB + (timeB / 2 - (timeB / 2) % 1);
-                        timeA = timeA + timeB;
-                        GenerateStrings(timeB, strB, 2);
-                        GenerateStrings(timeA, strA, 1);
-                        Text.text = strB;
-                        Debug.LogFormat("[Timing is Everything #{0}] Missed Stage 2 time. Strike! New time: {1}",
-                            moduleId, strB);
-                        Debug.Log("OKAY: " + timeA + " " + timeB + " " + timeC);
-                    }
-                }
-                else if (stages == 2)
-                {
-                    if (Mathf.Floor(Bomb.GetTime()) > timeA)
-                    {
-                        GetComponent<KMBombModule>().HandleStrike();
-                        timeA = timeA + (timeA / 2 - (timeA / 2) % 1);
-                        GenerateStrings(timeA, strA, 1);
-                        Text.text = strA;
-                        Debug.LogFormat("[Timing is Everything #{0}] Missed Stage 3 time. Strike! New time: {1}",
-                            moduleId, strA);
-                        Debug.Log("OKAY: " + timeA + " " + timeB + " " + timeC);
-                    }
-                }
-
-                if (startTime - Mathf.Floor(Bomb.GetTime()) > 1)
-                {
-                    active = true;
-                }
-
-                if (timeA == timeB && active && stages == 0)
-                {
-                    if (zenMode == false)
-                    {
-                        stages = 1;
-                        Text.text = strB;
-                        Lights[0].GetComponent<MeshRenderer>().material = GreenMat;
-                        Debug.LogFormat(
-                            "[Timing is Everything #{0}] Stage 1 automatically complete due to time becoming the same as Stage 2. {1} {2} {3}",
-                            moduleId, strA, strB, strC);
-                    }
-                    else
-                    {
-                        timeA = timeA * 2;
-                    }
-                }
-
-                if (timeB == timeC && active && stages == 1)
-                {
-                    stages = 2;
-                    Text.text = strC;
-                    if (zenMode)
-                    {
-                        Text.text = strA;
-                    }
-
-                    Lights[1].GetComponent<MeshRenderer>().material = GreenMat;
-                    Debug.LogFormat(
-                        "[Timing is Everything #{0}] Stage 2 automatically complete due to time becoming the same as Stage 3.",
-                        moduleId, strA, strB, strC);
-                }
-
-                if (timeC < 5 && active && stages == 2)
-                {
-                    GetComponent<KMBombModule>().HandlePass();
-                    moduleSolved = true;
-                    stages = 3;
-                    Text.text = "!!!";
-                    Lights[2].GetComponent<MeshRenderer>().material = GreenMat;
-                    Debug.LogFormat(
-                        "[Timing is Everything #{0}] Stage 3 automatically complete due to time becoming under 5 seconds. Module Solved.",
-                        moduleId, strA, strB, strC);
-                }
-            }
-        }
-    }
-
-    private void PressButton()
-    {
-        if (moduleSolved || !moduleReady)
-            return;
-        Button.AddInteractionPunch();
-        GetComponent<KMAudio>().PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.ButtonPress, transform);
-        if (zenMode == false)
-        {
-            if (stages == 0 && Mathf.Floor(Bomb.GetTime()) == timeA)
-            {
-                stages = 1;
-                Text.text = strB;
-                Lights[0].GetComponent<MeshRenderer>().material = GreenMat;
-                Debug.LogFormat("[Timing is Everything #{0}] Stage 1 complete.", moduleId);
-                tpCorrect = true;
-            }
-            else if (stages == 1 && Mathf.Floor(Bomb.GetTime()) == timeB)
-            {
-                stages = 2;
-                Text.text = strC;
-                Lights[1].GetComponent<MeshRenderer>().material = GreenMat;
-                Debug.LogFormat("[Timing is Everything #{0}] Stage 2 complete.", moduleId);
-                tpCorrect = true;
-            }
-            else if (stages == 2 && Mathf.Floor(Bomb.GetTime()) == timeC)
-            {
-                GetComponent<KMBombModule>().HandlePass();
-                moduleSolved = true;
-                stages = 3;
-                Text.text = "!!!";
-                Lights[2].GetComponent<MeshRenderer>().material = GreenMat;
-                Debug.LogFormat("[Timing is Everything #{0}] Stage 3 complete, module solved.", moduleId);
-                tpCorrect = true;
-            }
-            else if (stages != 3)
-            {
-                GetComponent<KMBombModule>().HandleStrike();
-                if (timeMode)
-                {
-                    Debug.LogFormat(
-                        "[Timing is Everything #{0}] Submit pressed at the wrong time of '{1}' on Stage {2}. Strike!",
-                        moduleId, Bomb.GetFormattedTime(), stages + 1);
-                }
-                else
-                {
-                    Debug.LogFormat("[Timing is Everything #{0}] Too early on Stage {1}. Strike!", moduleId,
-                        stages + 1);
-                }
+                Strike(true);
             }
         }
         else
         {
-            if (stages == 0 && Mathf.Floor(Bomb.GetTime()) == timeC)
+            if (Mathf.FloorToInt(Bomb.GetTime()) < displayedTime)
             {
-                stages = 1;
-                Text.text = strB;
-                Lights[0].GetComponent<MeshRenderer>().material = GreenMat;
-                Debug.LogFormat("[Timing is Everything #{0}] Stage 1 complete.", moduleId);
-                tpCorrect = true;
-            }
-            else if (stages == 1 && Mathf.Floor(Bomb.GetTime()) == timeB)
-            {
-                stages = 2;
-                GenerateStrings(timeA, strA, 1);
-                Text.text = strA;
-                Lights[1].GetComponent<MeshRenderer>().material = GreenMat;
-                Debug.LogFormat("[Timing is Everything #{0}] Stage 2 complete.", moduleId);
-                tpCorrect = true;
-                Debug.Log(timeA);
-            }
-            else if (stages == 2 && Mathf.Floor(Bomb.GetTime()) == timeA)
-            {
-                GetComponent<KMBombModule>().HandlePass();
-                moduleSolved = true;
-                stages = 3;
-                Text.text = "!!!";
-                Lights[2].GetComponent<MeshRenderer>().material = GreenMat;
-                Debug.LogFormat("[Timing is Everything #{0}] Stage 3 complete, module solved.", moduleId);
-                tpCorrect = true;
-            }
-            else if (stages != 3)
-            {
-                GetComponent<KMBombModule>().HandleStrike();
-                if (timeMode)
-                {
-                    Debug.LogFormat(
-                        "[Timing is Everything #{0}] Submit pressed at the wrong time of '{1}' on Stage {2}. Strike!",
-                        moduleId, Bomb.GetFormattedTime(), stages + 1);
-                }
-                else
-                {
-                    Debug.LogFormat("[Timing is Everything #{0}] Too early on Stage {1}. Strike!", moduleId,
-                        stages + 1);
-                }
+                Strike(true);
             }
         }
     }
 
+    void Strike(bool genNew)
+    {
+        Module.HandleStrike();
+        Debug.LogFormat("[Timing is Everything #{0}] {1} time {2}, strike!", moduleId, genNew ? "Missed" : "Pressed before", timeStrings[submittedStages]);
+        moduleReady = !genNew;
+        if (genNew)
+        {
+            GenerateTimes(3 - submittedStages, Mathf.FloorToInt(Bomb.GetTime()));
+        }
+    }
+
+    void PressButton()
+    {
+        if (moduleSolved || !moduleReady) { return; }
+
+        ButtonSel.AddInteractionPunch();
+        Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.ButtonPress, transform);
+
+        //TODO: add override when there are no more solved modules (i may have kept this module around, but i respect people's time)
+
+        if (Mathf.FloorToInt(Bomb.GetTime()) == displayedTime)
+        {
+            Debug.LogFormat("[Timing is Everything #{0}] Pressed at time {1}.", moduleId, timeStrings[submittedStages]);
+            ProgressStage();
+            while (Mathf.FloorToInt(Bomb.GetTime()) == displayedTime)
+            {
+                Debug.LogFormat("<Timing is Everything #{0}> Rare case: Time was too small so two times stacked on top of eachother, all relevant stages passed.", moduleId);
+                ProgressStage();
+            }
+        }
+        else
+        {
+            Strike(false);
+        }
+    }
+
+    void ProgressStage()
+    {
+        tpCorrect = true;
+        Lights[submittedStages].material = LightGreen;
+        submittedStages++;
+        if (submittedStages == 3)
+        {
+            Module.HandlePass();
+            moduleSolved = true;
+            Text.text = "!!!";
+            displayedTime = null;
+            Debug.LogFormat("[Timing is Everything #{0}] All stages complete. Module solved.", moduleId);
+        }
+        else
+        {
+            SetTime();
+        }
+    }
+
+    //TODO: ask peanut about behavior of everything i remember him agonizing over this
     //twitch plays
 #pragma warning disable 414
-    private readonly string TwitchHelpMessage =
-        @"!{0} submit|press at|on <time> [Presses the submit button at the specified time.]";
+    private readonly string TwitchHelpMessage = @"!{0} submit|press at|on <time> [Presses the submit button at the specified time.]";
 #pragma warning restore 414
     private IEnumerator ProcessTwitchCommand(string command)
     {
         var m = Regex.Match(command, @"^(?:submit|press)\s*(?:at|on)?\s*([0-9]+:)?([0-9]+):([0-5][0-9])$");
-        if (!m.Success || m.Groups[1].Success && int.Parse(m.Groups[2].Value) > 59
-        ) //Invalid command or time format with hour while having > 59 minutes (eg. 2:99:00)
+        if (!m.Success || m.Groups[1].Success && int.Parse(m.Groups[2].Value) > 59) //Invalid command or time format with hour while having > 59 minutes (eg. 2:99:00)
             yield break;
 
-        var commandSeconds = (!m.Groups[1].Success ? 0 : int.Parse(m.Groups[1].Value.Replace(":", ""))) * 3600 +
-                             int.Parse(m.Groups[2].Value) * 60 + int.Parse(m.Groups[3].Value);
+        var commandSeconds = (!m.Groups[1].Success ? 0 : int.Parse(m.Groups[1].Value.Replace(":", ""))) * 3600 + int.Parse(m.Groups[2].Value) * 60 + int.Parse(m.Groups[3].Value);
 
-        if (!zenMode)
-        {
-            if (Mathf.FloorToInt(Bomb.GetTime()) < commandSeconds) yield break;
-        }
-        else if (Mathf.FloorToInt(Bomb.GetTime()) > commandSeconds) yield break;
+        if (!ZenModeActive) {
+            if (Mathf.FloorToInt(Bomb.GetTime()) < commandSeconds)
+                yield break;
+        } else if (Mathf.FloorToInt(Bomb.GetTime()) > commandSeconds)
+            yield break;
 
         yield return null;
+
         int timeToSkipTo;
         var music = false;
-        if (zenMode)
+
+        if (ZenModeActive)
         {
             timeToSkipTo = commandSeconds - 5;
             if (commandSeconds - Bomb.GetTime() > 15) yield return "skiptime " + timeToSkipTo;
@@ -516,25 +257,25 @@ public class timingIsEverythingScript : MonoBehaviour
         }
 
         if (music) yield return "waiting music";
+
         while (Mathf.FloorToInt(Bomb.GetTime()) != commandSeconds)
             yield return "trycancel Button wasn't pressed due to request to cancel.";
+
         if (music) yield return "end waiting music";
-        Button.OnInteract();
+
+        ButtonSel.OnInteract();
+
         if (tpCorrect)
         {
             yield return "awardpoints 1";
             tpCorrect = false;
         }
     }
-
     private void TwitchHandleForcedSolve()
-    {
-        stages = 3;
-        moduleSolved = true;
-        Module.HandlePass();
-        Text.text = "!!!";
-        foreach (var l in Lights)
-            l.GetComponent<MeshRenderer>().material = GreenMat;
-        Debug.LogFormat("[Timing is Everything #{0}] Force solve requested by twitch plays.", moduleId);
+        {
+            Debug.LogFormat("[Timing is Everything #{0}] Force solve requested by twitch plays.", moduleId);
+            while (!moduleSolved) {
+                ProgressStage();
+            }
     }
 }
