@@ -19,6 +19,7 @@ public class timingIsEverythingScript : MonoBehaviour
     bool moduleReady;
     float startTime;
     float? displayedTime;
+    float? lastStrike = null;
     float[] chosenTimes = { -1f, -1f, -1f };
     string[] timeStrings = { "---", "---", "---" };
     int submittedStages = 0;
@@ -56,56 +57,51 @@ public class timingIsEverythingScript : MonoBehaviour
         {
             Debug.LogFormat("[Timing is Everything #{0}] Current Mode: Zen", moduleId);
             ButtonMesh.material = ButtonColors[2];
-            GenerateTimes(3, 120f * Bomb.GetSolvableModuleNames().Count);
+            GenerateTimes(3, 0f, 120f * Bomb.GetSolvableModuleNames().Count);
         }
         else if (TimeModeActive)
         {
             Debug.LogFormat("[Timing is Everything #{0}] Current Mode: Time", moduleId);
             ButtonMesh.material = ButtonColors[1];
-            GenerateTimes(3, startTime);
+            GenerateTimes(3, 0f, startTime);
         }
         else
         {
             Debug.LogFormat("[Timing is Everything #{0}] Current Mode: Normal", moduleId);
-            GenerateTimes(3, startTime);
+            GenerateTimes(3, 0f, startTime);
         }
     }
 
-    void GenerateTimes(int number, float maxTime)
+    void GenerateTimes(int number, float minTime, float maxTime)
     {
         //times
         for (int t = 0; t < 3; t++)
         {
             if (3 - number > t)
             {
-                chosenTimes[t] = Single.MaxValue; //so that when they're sorted, it's moved to a position of a time already dealt with
+                chosenTimes[t] = ZenModeActive ? Single.MinValue : Single.MaxValue; //so that when they're sorted, it's moved to a position of a time already dealt with
             }
             else
             {
                 if (maxTime <= 60f && !ZenModeActive)
                 {
-                    chosenTimes[t] = Mathf.FloorToInt(UnityEngine.Random.Range(0f, maxTime));
+                    chosenTimes[t] = Mathf.FloorToInt(UnityEngine.Random.Range(minTime, maxTime));
                 }
                 else
                 {
-                    chosenTimes[t] = Mathf.FloorToInt(UnityEngine.Random.Range(20f, maxTime - 20f));
+                    chosenTimes[t] = Mathf.FloorToInt(UnityEngine.Random.Range(minTime + 20f, maxTime - 21f));
                 }
             }
         }
 
         Array.Sort(chosenTimes);
-        if (!ZenModeActive) { Array.Reverse(chosenTimes); }
+        if (!ZenModeActive)
+            Array.Reverse(chosenTimes);
 
-        if (ZenModeActive)
-        {
-            chosenTimes[1] *= 2;
-            chosenTimes[2] *= 3;
-        }
-        else
-        {
-            if (chosenTimes[0] + 3 < maxTime) { chosenTimes[0] += 3; } //these two adjustments ensure you don't have two times too close together.
-            if (chosenTimes[2] - 3 > 0) { chosenTimes[2] -= 3; }
-        }
+        if (chosenTimes[0] + 5 < maxTime) //these two adjustments ensure you don't have two times too close together.
+            chosenTimes[0] += ZenModeActive ? -5 : 5;
+        if (chosenTimes[2] - 5 > 0)
+            chosenTimes[2] -= ZenModeActive ? -5 : 5;
 
         //strings
         for (int t = 0; t < 3; t++)
@@ -146,32 +142,20 @@ public class timingIsEverythingScript : MonoBehaviour
     {
         if (!moduleReady || moduleSolved || TimeModeActive) { return; }
         if (Mathf.FloorToInt(Bomb.GetTime()) == startTime) { return; }
-        //^that fixes a bug where in zen mode, the game will still use the original 'set' time, and since that's greater than the displayed time, a strike would happen at the start of the bomb
+        /* the above line fixes a bug where in zen mode, the game will *
+         * still use the original 'set' time, and since that's greater *
+         * than the displayed time, a strike would happen at the start *
+         * of the bomb. fortunately, the module won't generate it ever */
 
         if (ZenModeActive)
         {
             if (Mathf.FloorToInt(Bomb.GetTime()) > displayedTime)
-            {
                 Strike(true);
-            }
         }
         else
         {
             if (Mathf.FloorToInt(Bomb.GetTime()) < displayedTime)
-            {
                 Strike(true);
-            }
-        }
-    }
-
-    void Strike(bool genNew)
-    {
-        Module.HandleStrike();
-        Debug.LogFormat("[Timing is Everything #{0}] {1} time {2}, strike!", moduleId, genNew ? "Missed" : "Pressed before", timeStrings[submittedStages]);
-        moduleReady = !genNew;
-        if (genNew)
-        {
-            GenerateTimes(3 - submittedStages, Mathf.FloorToInt(Bomb.GetTime()));
         }
     }
 
@@ -182,7 +166,7 @@ public class timingIsEverythingScript : MonoBehaviour
         ButtonSel.AddInteractionPunch();
         Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.ButtonPress, transform);
 
-        //TODO: add override when there are no more solved modules (i may have kept this module around, but i respect people's time)
+        //TODO: add override when all other modules are solved (i may have kept this module around, but i respect people's time)
 
         if (Mathf.FloorToInt(Bomb.GetTime()) == displayedTime)
         {
@@ -190,13 +174,38 @@ public class timingIsEverythingScript : MonoBehaviour
             ProgressStage();
             while (Mathf.FloorToInt(Bomb.GetTime()) == displayedTime)
             {
-                Debug.LogFormat("<Timing is Everything #{0}> Rare case: Time was too small so two times stacked on top of eachother, all relevant stages passed.", moduleId);
+                Debug.LogFormat("<Timing is Everything #{0}> Time was too small so two times stacked on top of eachother, all relevant stages passed.", moduleId);
                 ProgressStage();
             }
         }
         else
         {
+            //Double-strike prevention: if you just got a strike from missing a time, but then hit the button on the next second (with a new time), it shouldn't strike you a second time.
+            if (Mathf.FloorToInt(Bomb.GetTime()) == lastStrike)
+            {
+                Debug.LogFormat("<Timing is Everything #{0}> Detected double-strike, second strike prevented.", moduleId);
+                return;
+            }
             Strike(false);
+        }
+    }
+
+    void Strike(bool genNew)
+    {
+        lastStrike = Mathf.FloorToInt(Bomb.GetTime());
+        Module.HandleStrike();
+        Debug.LogFormat("[Timing is Everything #{0}] {1} time {2}, strike!", moduleId, genNew ? "Missed" : "Pressed before", timeStrings[submittedStages]);
+        moduleReady = !genNew;
+        if (genNew)
+        {
+            if (ZenModeActive)
+            {
+                GenerateTimes(3 - submittedStages, Mathf.FloorToInt(Bomb.GetTime()), Mathf.FloorToInt(Bomb.GetTime()) + 30f * Bomb.GetSolvableModuleNames().Count);
+            }
+            else
+            {
+                GenerateTimes(3 - submittedStages, 0f, Mathf.FloorToInt(Bomb.GetTime()));
+            }
         }
     }
 
@@ -219,7 +228,7 @@ public class timingIsEverythingScript : MonoBehaviour
         }
     }
 
-    //TODO: ask peanut about behavior of everything i remember him agonizing over this
+    //TODO: ask peanut about behavior of everything i remember him agonizing over all the details
     //twitch plays
 #pragma warning disable 414
     private readonly string TwitchHelpMessage = @"!{0} submit|press at|on <time> [Presses the submit button at the specified time.]";
