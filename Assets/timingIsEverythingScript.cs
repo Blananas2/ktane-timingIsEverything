@@ -181,7 +181,7 @@ public class timingIsEverythingScript : MonoBehaviour
             ProgressStage();
             while (Mathf.FloorToInt(Bomb.GetTime()) == displayedTime)
             {
-                Debug.LogFormat("<Timing is Everything #{0}> Time was too small so two times stacked on top of eachother, all relevant stages passed.", moduleId);
+                Debug.LogFormat("<Timing is Everything #{0}> Time was too small so multiple times were stacked on top of eachother, all relevant stages passed.", moduleId);
                 ProgressStage();
             }
         }
@@ -262,22 +262,22 @@ public class timingIsEverythingScript : MonoBehaviour
         if (ZenModeActive)
         {
             timeToSkipTo = commandSeconds - 5;
-            if (commandSeconds - Bomb.GetTime() > 15) yield return "skiptime " + timeToSkipTo;
-            if (commandSeconds - Bomb.GetTime() > 10) music = true;
+            if (commandSeconds - Bomb.GetTime() > 15) { yield return "skiptime " + timeToSkipTo; }
+            if (commandSeconds - Bomb.GetTime() > 10) { music = true; }
         }
         else
         {
             timeToSkipTo = commandSeconds + 5;
-            if (Bomb.GetTime() - commandSeconds > 15) yield return "skiptime " + timeToSkipTo;
-            if (Bomb.GetTime() - commandSeconds > 10) music = true;
+            if (Bomb.GetTime() - commandSeconds > 15) { yield return "skiptime " + timeToSkipTo; }
+            if (Bomb.GetTime() - commandSeconds > 10) { music = true; }
         }
 
-        if (music) yield return "waiting music";
+        if (music) { yield return "waiting music"; }
 
         while (Mathf.FloorToInt(Bomb.GetTime()) != commandSeconds)
             yield return "trycancel Button wasn't pressed due to request to cancel.";
 
-        if (music) yield return "end waiting music";
+        if (music) { yield return "end waiting music"; }
 
         ButtonSel.OnInteract();
 
@@ -289,7 +289,7 @@ public class timingIsEverythingScript : MonoBehaviour
     }
     private void TwitchHandleForcedSolve()
         {
-            Debug.LogFormat("[Timing is Everything #{0}] Force solve requested by twitch plays.", moduleId);
+            Debug.LogFormat("[Timing is Everything #{0}] Force solve requested by Twitch Plays.", moduleId);
             while (!moduleSolved) {
                 ProgressStage();
             }
