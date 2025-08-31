@@ -51,7 +51,14 @@ public class timingIsEverythingScript : MonoBehaviour
     {
         startTime = Mathf.FloorToInt(Bomb.GetTime());
 
-        //TODO: bomb timer modifier detector shiz
+        //this is the Bomb Timer Modifier display hours check, thanks to julie this!
+        var btmInfoType = ReflectionHelper.FindType("CustomBombInfo", "KtaneTimerV2");
+        if (btmInfoType != null)
+        {
+            var btmInfo = GetComponent(btmInfoType);
+            if (btmInfo)
+                calcHours = btmInfo.GetValue<bool>("UseHours");
+        }
 
         if (ZenModeActive)
         {
@@ -166,7 +173,7 @@ public class timingIsEverythingScript : MonoBehaviour
         ButtonSel.AddInteractionPunch();
         Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.ButtonPress, transform);
 
-        //TODO: add override when all other modules are solved (i may have kept this module around, but i respect people's time)
+        //TODO: add override when all other modules are solved (i may have kept this module around, but i respect people's time) -- I'm considering making the display selectable to make this happen.
 
         if (Mathf.FloorToInt(Bomb.GetTime()) == displayedTime)
         {
