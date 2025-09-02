@@ -14,6 +14,7 @@ public class timingIsEverythingScript : MonoBehaviour
     public MeshRenderer[] Lights;
     public Material LightGreen;
     public TextMesh Text;
+    public TextMesh Exclaim;
     public Material[] ButtonColors;
 
     bool moduleReady;
@@ -23,6 +24,8 @@ public class timingIsEverythingScript : MonoBehaviour
     float[] chosenTimes = { -1f, -1f, -1f };
     string[] timeStrings = { "---", "---", "---" };
     int submittedStages = 0;
+    Coroutine buttonHold;
+    bool holding = false;
 
     bool TwitchPlaysSkipTimeAllowed = true;
     bool TimeModeActive = false;
@@ -40,11 +43,8 @@ public class timingIsEverythingScript : MonoBehaviour
         moduleId = moduleIdCounter++;
 
         Module.OnActivate += ModuleStart;
-        ButtonSel.OnInteract += delegate
-        {
-            PressButton();
-            return false;
-        };
+        ButtonSel.OnInteract += delegate { ButtonPush(); return false; };
+        ButtonSel.OnInteractEnded += delegate { ButtonRelease(); };
     }
 
     void ModuleStart()
@@ -166,14 +166,31 @@ public class timingIsEverythingScript : MonoBehaviour
         }
     }
 
-    void PressButton()
+    void ButtonPush()
     {
         if (moduleSolved || !moduleReady) { return; }
+        buttonHold = StartCoroutine(HoldChecker());
+    }
 
+    void ButtonRelease()
+    {
+        StopAllCoroutines();
+        if (!holding)
+            ButtonPressed();
+        holding = false;
+    }
+
+    IEnumerator HoldChecker()
+    {
+        yield return new WaitForSeconds(1f);
+        holding = true;
+        ButtonHeld();
+    }
+
+    void ButtonPressed()
+    {
         ButtonSel.AddInteractionPunch();
         Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.ButtonPress, transform);
-
-        //TODO: add override when all other modules are solved (i may have kept this module around, but i respect people's time) -- I'm considering making the display selectable to make this happen.
 
         if (Mathf.FloorToInt(Bomb.GetTime()) == displayedTime)
         {
@@ -195,6 +212,21 @@ public class timingIsEverythingScript : MonoBehaviour
             }
             Strike(false);
         }
+    }
+
+    void ButtonHeld() //This function recreates the time skip feature of Turn The Key's Component Solver in Tweaks
+    {
+        if (Bomb.GetModuleNames().Count - Bomb.GetSolvableModuleNames().Count > 0) //No needies, don't skip forward
+            return;
+
+        float bombTime = Bomb.GetTime();
+        if (!(ZenModeActive ? displayedTime - 75 > bombTime : bombTime > displayedTime + 75)) //Too close to the time already, don't skip forward
+            return;
+
+        Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.BigButtonRelease, transform);
+
+        int offset = 45 + UnityEngine.Random.Range(0, 31);
+        TimeRemaining.FromModule(Module, (float)displayedTime + (ZenModeActive ? -offset : offset));
     }
 
     void Strike(bool genNew)
@@ -225,7 +257,8 @@ public class timingIsEverythingScript : MonoBehaviour
         {
             Module.HandlePass();
             moduleSolved = true;
-            Text.text = "!!!";
+            Text.text = null;
+            Exclaim.text = "! ! !";
             displayedTime = null;
             Debug.LogFormat("[Timing is Everything #{0}] All stages complete. Module solved.", moduleId);
         }
@@ -235,7 +268,6 @@ public class timingIsEverythingScript : MonoBehaviour
         }
     }
 
-    //TODO: ask peanut about behavior of everything i remember him agonizing over all the details
     //twitch plays
 #pragma warning disable 414
     private readonly string TwitchHelpMessage = @"!{0} submit|press at|on <time> [Presses the submit button at the specified time.]";
@@ -280,6 +312,7 @@ public class timingIsEverythingScript : MonoBehaviour
         if (music) { yield return "end waiting music"; }
 
         ButtonSel.OnInteract();
+        ButtonSel.OnInteractEnded();
 
         if (tpCorrect)
         {
@@ -288,10 +321,10 @@ public class timingIsEverythingScript : MonoBehaviour
         }
     }
     private void TwitchHandleForcedSolve()
-        {
-            Debug.LogFormat("[Timing is Everything #{0}] Force solve requested by Twitch Plays.", moduleId);
-            while (!moduleSolved) {
-                ProgressStage();
-            }
+    {
+        Debug.LogFormat("[Timing is Everything #{0}] Force solve requested by Twitch Plays.", moduleId);
+        while (!moduleSolved) {
+            ProgressStage();
+        }
     }
 }
